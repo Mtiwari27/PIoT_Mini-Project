@@ -14,21 +14,22 @@ st.set_page_config(
     layout="wide"
 )
 st.title("🚗 Vehicle Speed Detection & Tracking System")
+st.caption("Plain OpenCV | No Haar | No ML | Streamlit Cloud Ready")
 
 # --------------------------------------------------
 # USER INPUT
 # --------------------------------------------------
 video_file = st.file_uploader("Upload Traffic Video", type=["mp4", "avi"])
 
-PIXELS_PER_METER = 50
-DISPLAY_FPS = 10
+PIXELS_PER_METER = 50     # calibration constant
+DISPLAY_FPS = 15          # smooth playback control
 
 # --------------------------------------------------
 # BACKGROUND SUBTRACTOR
 # --------------------------------------------------
 bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-    history=200,
-    varThreshold=50,
+    history=300,
+    varThreshold=40,
     detectShadows=False
 )
 
@@ -36,39 +37,47 @@ bg_subtractor = cv2.createBackgroundSubtractorMOG2(
 # TRACKING STORAGE
 # --------------------------------------------------
 vehicle_id = 0
-vehicles = {}
+vehicles = {}  # id -> (cx, cy, timestamp)
 
 # --------------------------------------------------
 # PROCESS VIDEO
 # --------------------------------------------------
 if video_file:
+    # Save uploaded video
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_input:
         temp_input.write(video_file.read())
         input_path = temp_input.name
 
     cap = cv2.VideoCapture(input_path)
 
-    # Output video
-    output_path = os.path.join(tempfile.gettempdir(), "vehicle_speed_output.mp4")
+    # Output video setup
+    output_path = os.path.join(
+        tempfile.gettempdir(), "vehicle_speed_output.mp4"
+    )
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(output_path, fourcc, DISPLAY_FPS, (640, 360))
 
-    frame_placeholder = st.image([])
-    frame_count = 0
+    frame_placeholder = st.empty()
 
+    # --------------------------------------------------
+    # MAIN LOOP
+    # --------------------------------------------------
     while cap.isOpened():
+        start_time = time.time()
+
         ret, frame = cap.read()
         if not ret:
             break
 
-        frame_count += 1
-
         frame = cv2.resize(frame, (640, 360))
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+        # Background subtraction
         fg_mask = bg_subtractor.apply(gray)
         fg_mask = cv2.medianBlur(fg_mask, 5)
-        _, fg_mask = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY)
+        _, fg_mask = cv2.threshold(
+            fg_mask, 200, 255, cv2.THRESH_BINARY
+        )
 
         contours, _ = cv2.findContours(
             fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
@@ -77,7 +86,7 @@ if video_file:
         current_vehicles = {}
 
         for cnt in contours:
-            if cv2.contourArea(cnt) < 500:
+            if cv2.contourArea(cnt) < 600:
                 continue
 
             x, y, w, h = cv2.boundingRect(cnt)
@@ -114,26 +123,35 @@ if video_file:
                     2
                 )
 
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.rectangle(
+                frame, (x, y), (x + w, y + h), (0, 255, 0), 2
+            )
 
         vehicles = current_vehicles
 
+        # Save frame to output video
         out.write(frame)
 
-        if frame_count % 2 == 0:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_placeholder.image(frame_rgb)
+        # Display smoothly in Streamlit
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_placeholder.image(frame_rgb, channels="RGB")
 
-        time.sleep(1 / DISPLAY_FPS)
+        # Frame pacing
+        elapsed = time.time() - start_time
+        delay = max(0, (1 / DISPLAY_FPS) - elapsed)
+        time.sleep(delay)
 
     cap.release()
     out.release()
 
     st.success("✅ Video processing completed")
 
+    # --------------------------------------------------
+    # DOWNLOAD BUTTON
+    # --------------------------------------------------
     with open(output_path, "rb") as f:
         st.download_button(
-            "⬇️ Download Processed Video",
+            label="⬇️ Download Processed Video",
             data=f,
             file_name="vehicle_speed_output.mp4",
             mime="video/mp4"
