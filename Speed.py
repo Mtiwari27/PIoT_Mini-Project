@@ -9,7 +9,10 @@ import os
 # --------------------------------------------------
 # STREAMLIT CONFIG
 # --------------------------------------------------
-st.set_page_config("Vehicle Speed Detection & Tracking System", layout="wide")
+st.set_page_config(
+    page_title="Vehicle Speed Detection & Tracking System",
+    layout="wide"
+)
 st.title("🚗 Vehicle Speed Detection & Tracking System")
 
 # --------------------------------------------------
@@ -39,14 +42,14 @@ vehicles = {}
 # PROCESS VIDEO
 # --------------------------------------------------
 if video_file:
-    # Save uploaded video
-    temp_input = tempfile.NamedTemporaryFile(delete=False)
-    temp_input.write(video_file.read())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_input:
+        temp_input.write(video_file.read())
+        input_path = temp_input.name
 
-    cap = cv2.VideoCapture(temp_input.name)
+    cap = cv2.VideoCapture(input_path)
 
-    # Output video setup
-    output_path = os.path.join(tempfile.gettempdir(), "output_speed_detection.mp4")
+    # Output video
+    output_path = os.path.join(tempfile.gettempdir(), "vehicle_speed_output.mp4")
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(output_path, fourcc, DISPLAY_FPS, (640, 360))
 
@@ -115,10 +118,8 @@ if video_file:
 
         vehicles = current_vehicles
 
-        # Write frame to output video
         out.write(frame)
 
-        # Display
         if frame_count % 2 == 0:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame_placeholder.image(frame_rgb)
@@ -130,12 +131,9 @@ if video_file:
 
     st.success("✅ Video processing completed")
 
-    # --------------------------------------------------
-    # DOWNLOAD BUTTON
-    # --------------------------------------------------
     with open(output_path, "rb") as f:
         st.download_button(
-            label="⬇️ Download Processed Video",
+            "⬇️ Download Processed Video",
             data=f,
             file_name="vehicle_speed_output.mp4",
             mime="video/mp4"
